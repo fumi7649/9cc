@@ -218,7 +218,7 @@ Token *tokenize()
       continue;
     }
 
-    if (*p == '+' || *p == '-')
+    if (strchr("+-*/()",*p))
     {
       cur = new_token(TK_RESERVED, cur, p++);
       continue;
@@ -230,7 +230,7 @@ Token *tokenize()
       cur->val = strtol(p, &p, 10);
       continue;
     }
-    error_at(p, "expected a number");
+    error_at(p, "invalid token");
   }
 
   new_token(TK_EOF, cur, p);
