@@ -44,6 +44,7 @@ struct Node
 Node *expr();
 Node *mul();
 Node *primary();
+Node *unary();
 bool consume(char op);
 void expect(char op);
 int expect_number();
@@ -81,14 +82,14 @@ Node *expr()
 
 Node *mul()
 {
-  Node *node = primary();
+  Node *node = unary();
 
   for (;;)
   {
     if (consume('*'))
-      node = new_node(ND_MUL, node, primary());
+      node = new_node(ND_MUL, node, unary());
     else if (consume('/'))
-      node = new_node(ND_DIV, node, primary());
+      node = new_node(ND_DIV, node, unary());
     else
       return node;
   }
@@ -103,6 +104,19 @@ Node *primary()
     return node;
   }
   return new_node_number(expect_number());
+}
+
+Node *unary()
+{
+  if (consume('+'))
+  {
+    return primary();
+  }
+  if (consume('-'))
+  {
+    return new_node(ND_SUB, new_node_number(0), primary());
+  }
+  return primary();
 }
 
 void gen(Node *node)
@@ -218,7 +232,7 @@ Token *tokenize()
       continue;
     }
 
-    if (strchr("+-*/()",*p))
+    if (strchr("+-*/()", *p))
     {
       cur = new_token(TK_RESERVED, cur, p++);
       continue;
