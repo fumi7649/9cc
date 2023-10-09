@@ -20,15 +20,44 @@ Node *new_node_number(int val)
 
 // ---------------生成文法---------------
 
-Node *expr()
+Node *code[100];
+
+Node *assign()
 {
-  return equality();
+  Node *node = equality();
+  if (consume("="))
+    node = new_node(ND_ASSIGN, node, assign());
+  return node;
 }
 
-Node *equality() {
+Node *expr()
+{
+  return assign();
+}
+
+Node *stmt()
+{
+  Node *node = expr();
+  expect(";");
+  return node;
+}
+
+void program()
+{
+  int i = 0;
+  while (!at_eof())
+  {
+    code[i++] = stmt();
+  }
+  code[i] = NULL;
+}
+
+Node *equality()
+{
   Node *node = relational();
 
-  for (;;) {
+  for (;;)
+  {
     if (consume("=="))
       node = new_node(ND_EQ, node, relational());
     else if (consume("!="))
@@ -93,6 +122,14 @@ Node *primary()
     consume(")");
     return node;
   }
+  Token *tok = consume_ident(); // Nodeを作る上でtokenの情報が必要なのでtokenが返り値
+  if (tok)
+  {
+    Node *node = calloc(1, sizeof(Node));
+    node->kind = ND_LVAR;
+    node->offset = (tok->str[0] - 'a' + 1) * 8;
+    return node;
+  }
   return new_node_number(expect_number());
 }
 
@@ -138,6 +175,17 @@ bool consume(char *op)
     return false;
   token = token->next;
   return true;
+}
+
+Token *consume_ident()
+{
+  if (token->kind != TK_IDENT)
+  {
+    return NULL;
+  }
+  Token *t = token;
+  token = token->next;
+  return t;
 }
 
 void expect(char *op)
@@ -191,18 +239,32 @@ Token *tokenize()
       continue;
     }
 
-    if (startswith(p, "==") || startswith(p, "!=") || startswith(p, "<=") || startswith(p, ">=")) {
+    if ('a' <= *p && *p <= 'z')
+    {
+      cur = new_token(TK_IDENT, cur, p++, 1);
+      continue;
+    }
+
+    if (startswith(p, "=") || startswith(p, ";")) {
+      cur = new_token(TK_RESERVED, cur, p++, 1);
+      continue;
+    }
+
+    if (startswith(p, "==") || startswith(p, "!=") || startswith(p, "<=") || startswith(p, ">="))
+    {
       cur = new_token(TK_RESERVED, cur, p, 2);
       p += 2;
       continue;
     }
 
-    if (strchr("+-*/()<>", *p)) {
+    if (strchr("+-*/()<>", *p))
+    {
       cur = new_token(TK_RESERVED, cur, p++, 1);
       continue;
     }
 
-    if (isdigit(*p)) {
+    if (isdigit(*p))
+    {
       cur = new_token(TK_NUM, cur, p, 0);
       char *q = p;
       cur->val = strtol(p, &p, 10);
