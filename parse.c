@@ -1,7 +1,26 @@
 
 #include "9cc.h"
 
-Node *new_node(NodeKind kind, Node *lhs, Node *rhs)
+LVar *locals;
+
+char *strndup(const char *str, size_t n)
+{
+  char *new_str = (char *)malloc(n + 1);
+  if (new_str)
+  {
+    strncpy(new_str, str, n);
+    new_str[n] = '\0';
+  }
+  return new_str;
+}
+
+Node *new_node(NodeKind kind) {
+  Node *node = calloc(1, sizeof(Node));
+  node->kind = kind;
+  return node;
+}
+
+Node *new_binary(NodeKind kind, Node *lhs, Node *rhs)
 {
   Node *node = calloc(1, sizeof(Node));
   node->kind = kind;
@@ -18,6 +37,22 @@ Node *new_node_number(int val)
   return node;
 }
 
+LVar *new_lvar(char *name)
+{
+  LVar *var = calloc(1, sizeof(LVar));
+  var->name = name;
+  var->next = locals;
+  locals = var;
+  return var;
+}
+
+Node *new_var_node(LVar *var)
+{
+  Node *node = new_node(ND_LVAR);
+  node->var = var;
+  return node;
+}
+
 // ---------------生成文法---------------
 
 Node *code[100];
@@ -26,7 +61,7 @@ Node *assign()
 {
   Node *node = equality();
   if (consume("="))
-    node = new_node(ND_ASSIGN, node, assign());
+    node = new_binary(ND_ASSIGN, node, assign());
   return node;
 }
 
@@ -59,9 +94,9 @@ Node *equality()
   for (;;)
   {
     if (consume("=="))
-      node = new_node(ND_EQ, node, relational());
+      node = new_binary(ND_EQ, node, relational());
     else if (consume("!="))
-      node = new_node(ND_NE, node, relational());
+      node = new_binary(ND_NE, node, relational());
     else
       return node;
   }
@@ -73,13 +108,13 @@ Node *relational()
   for (;;)
   {
     if (consume("<"))
-      node = new_node(ND_LT, node, add());
+      node = new_binary(ND_LT, node, add());
     else if (consume("<="))
-      node = new_node(ND_LE, node, add());
+      node = new_binary(ND_LE, node, add());
     else if (consume(">"))
-      node = new_node(ND_LT, add(), node);
+      node = new_binary(ND_LT, add(), node);
     else if (consume(">="))
-      node = new_node(ND_LE, add(), node);
+      node = new_binary(ND_LE, add(), node);
     else
       return node;
   }
@@ -91,9 +126,9 @@ Node *add()
   for (;;)
   {
     if (consume("+"))
-      node = new_node(ND_ADD, node, mul());
+      node = new_binary(ND_ADD, node, mul());
     else if (consume("-"))
-      node = new_node(ND_SUB, node, mul());
+      node = new_binary(ND_SUB, node, mul());
     else
       return node;
   }
@@ -106,9 +141,9 @@ Node *mul()
   for (;;)
   {
     if (consume("*"))
-      node = new_node(ND_MUL, node, unary());
+      node = new_binary(ND_MUL, node, unary());
     else if (consume("/"))
-      node = new_node(ND_DIV, node, unary());
+      node = new_binary(ND_DIV, node, unary());
     else
       return node;
   }
@@ -125,9 +160,15 @@ Node *primary()
   Token *tok = consume_ident(); // Nodeを作る上でtokenの情報が必要なのでtokenが返り値
   if (tok)
   {
-    Node *node = calloc(1, sizeof(Node));
-    node->kind = ND_LVAR;
-    node->offset = (tok->str[0] - 'a' + 1) * 8;
+    Node *node = new_node(ND_LVAR); 
+
+    if (tok->kind == TK_IDENT)
+    {
+      LVar *lvar = find_lvar(tok);
+      if (!lvar)
+        lvar = new_lvar(strndup(tok->str, tok->len));
+      return new_var_node(lvar);
+    }
     return node;
   }
   return new_node_number(expect_number());
@@ -141,7 +182,7 @@ Node *unary()
   }
   if (consume("-"))
   {
-    return new_node(ND_SUB, new_node_number(0), primary());
+    return new_binary(ND_SUB, new_node_number(0), primary());
   }
   return primary();
 }
@@ -209,70 +250,10 @@ bool at_eof()
   return token->kind == TK_EOF;
 }
 
-Token *new_token(TokenKind kind, Token *cur, char *str, int len)
+LVar *find_lvar(Token *tok)
 {
-  Token *tok = calloc(1, sizeof(Token));
-  tok->kind = kind;
-  tok->str = str;
-  tok->len = len;
-  cur->next = tok;
-  return tok;
-}
-
-bool startswith(char *p, char *q)
-{
-  return memcmp(p, q, strlen(q)) == 0;
-}
-
-Token *tokenize()
-{
-  char *p = user_input;
-  Token head;
-  head.next = NULL;
-  Token *cur = &head;
-
-  while (*p)
-  {
-    if (isspace(*p))
-    {
-      p++;
-      continue;
-    }
-
-    if ('a' <= *p && *p <= 'z')
-    {
-      cur = new_token(TK_IDENT, cur, p++, 1);
-      continue;
-    }
-
-    if (startswith(p, "=") || startswith(p, ";")) {
-      cur = new_token(TK_RESERVED, cur, p++, 1);
-      continue;
-    }
-
-    if (startswith(p, "==") || startswith(p, "!=") || startswith(p, "<=") || startswith(p, ">="))
-    {
-      cur = new_token(TK_RESERVED, cur, p, 2);
-      p += 2;
-      continue;
-    }
-
-    if (strchr("+-*/()<>", *p))
-    {
-      cur = new_token(TK_RESERVED, cur, p++, 1);
-      continue;
-    }
-
-    if (isdigit(*p))
-    {
-      cur = new_token(TK_NUM, cur, p, 0);
-      char *q = p;
-      cur->val = strtol(p, &p, 10);
-      cur->len = p - q;
-      continue;
-    }
-    error_at(p, "invalid token");
-  }
-  new_token(TK_EOF, cur, p, 0);
-  return head.next;
+  for (LVar *var = locals; var; var = var->next)
+    if (var->len == tok->len && !memcmp(tok->str, var->name, var->len))
+      return var;
+  return NULL;
 }

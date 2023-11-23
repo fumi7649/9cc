@@ -7,6 +7,7 @@
 
 typedef struct Node Node;
 typedef struct Token Token;
+typedef struct LVar LVar;
 
 // NodeKind
 typedef enum
@@ -24,11 +25,21 @@ typedef enum
   ND_NUM,    // Integer
 } NodeKind;
 
+// ローカル変数の型
+struct LVar
+{
+  LVar *next; // 次の変数かNULL
+  char *name; // 変数の名前
+  int len;    // 名前の長さ
+  int offset; // RBPからのオフセット
+};
+
 struct Node
 {
   NodeKind kind;
   Node *lhs;
   Node *rhs;
+  LVar *var;
   int val;
   int offset;
 };
@@ -67,7 +78,7 @@ Node *assign();
 Node *stmt();
 void program();
 
-Node *new_node(NodeKind kind, Node *lhs, Node *rhs);
+Node *new_binary(NodeKind kind, Node *lhs, Node *rhs);
 Node *new_node_number(int val);
 
 void gen(Node *node);
@@ -79,6 +90,9 @@ bool at_eof();
 Token *tokenize();
 Token *new_token(TokenKind kind, Token *cur, char *str, int len);
 
+LVar *find_lvar(Token *tok);
+
 extern Token *token;
 extern char *user_input;
 extern Node *code[100];
+extern LVar *locals;

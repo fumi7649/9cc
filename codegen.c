@@ -1,5 +1,13 @@
 #include "9cc.h"
 
+static int align_lvar_offsets() {
+  int offset = 0;
+  for (LVar *var = locals;var;var = var->next) {
+    offset += 8;
+    var->offset = -offset;
+  }
+}
+
 void gen_lval(Node *node) {
   if(node->kind != ND_LVAR) {
     error("代入の左辺値が変数ではありません");
@@ -12,6 +20,7 @@ void gen_lval(Node *node) {
 
 void gen(Node *node)
 {
+  align_lvar_offsets();
   switch (node->kind) 
   {
   case ND_NUM:
@@ -22,6 +31,7 @@ void gen(Node *node)
     printf("  pop rax\n");
     printf("  mov rax, [rax]\n");
     printf("  push rax\n");
+    return;
   case ND_ASSIGN:
     gen_lval(node->lhs);
     gen(node->rhs);
